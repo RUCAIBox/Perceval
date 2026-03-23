@@ -63,7 +63,7 @@ This creates a **hard credit-assignment problem** that bottlenecks learning.
 ## 🔧 Method Overview
 
 <div align="center">
-<img src="assets/framework.png" width="85%" alt="Perceval Framework">
+<img src="assets/main.pdf" width="85%" alt="Perceval Framework">
 <p><em>Overview of Process-Supervised GRPO with Perceval.</em></p>
 </div>
 
@@ -109,15 +109,6 @@ where $m_{i,t} = 1$ for tokens in hallucinated spans. This directly penalizes ha
 
 > **Key finding**: Perceval's fine-grained perceptual supervision generalizes to math & chart reasoning tasks, even without PRM intervention during their RL training — a surprising capability transfer effect.
 
----
-
-## 🏗️ Installation
-
-```bash
-git clone https://github.com/RUCAIBox/Perceval.git
-cd Perceval
-pip install -r requirements.txt
-```
 
 ---
 
@@ -132,38 +123,10 @@ pip install -r requirements.txt
 
 ---
 
-## 🧪 Quick Start
 
-```python
-# Coming soon
-from perceval import Perceval
-
-prm = Perceval.from_pretrained("RUCAIBox/Perceval-PRM-7B")
-result = prm.verify(image=image, query=query, response=response)
-# Returns hallucinated spans, e.g.:
-# ["The main color of the desk appears to be dark brown or black"]
-```
 
 ---
-
-## 📝 Citation
-
-If you find this work useful, please cite:
-
-```bibtex
-@inproceedings{min2026perceval,
-  title     = {Improving Vision-language Models with Perception-centric Process Reward Models},
-  author    = {Min, Yingqian and Zhou, Kun and Li, Yifan and Wu, Yuhuan and Peng, Han and Du, Yifan and Zhao, Wayne Xin and Yang, Min and Wen, Ji-Rong},
-  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year      = {2026}
-}
-```
-
----
-
-## 🙏 Acknowledgement
-
-This work was partially supported by the National Natural Science Foundation of China (No. 92470205) and Beijing Major Science and Technology Project (No. Z251100008425002).
+## Acknowledgments
 
 We thank the authors of [DeepEyes](https://github.com/Visual-Agent/DeepEyes), [SophiaVL-R1](https://github.com/kxfan2002/SophiaVL-R1), and [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL) for their open-source contributions.
 
