@@ -63,7 +63,7 @@ This creates a **hard credit-assignment problem** that bottlenecks learning.
 ## 🔧 Method Overview
 
 <div align="center">
-<img src="assets/main.pdf" width="85%" alt="Perceval Framework">
+<img src="assets/main.png" width="85%" alt="Perceval Framework">
 <p><em>Overview of Process-Supervised GRPO with Perceval.</em></p>
 </div>
 
