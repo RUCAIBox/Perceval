@@ -51,10 +51,9 @@ The PRM training pipeline itself (query selection → rollout generation → aut
 
 | Checkpoint | Role | HuggingFace |
 | --- | --- | --- |
-| `perceval-prm-3b` | 3B PERCEVAL — perception-centric PRM | `<YOUR_HF_USER>/perceval-prm-3b` *(coming soon)* |
-| `perceval-prm-7b` | 7B PERCEVAL — perception-centric PRM | `<YOUR_HF_USER>/perceval-prm-7b` *(coming soon)* |
-| `perceval-policy-3b` | Qwen2.5-VL-3B-Instruct policy after Perceval-RL training | `<YOUR_HF_USER>/perceval-policy-3b` *(coming soon)* |
-| `perceval-policy-7b` | Qwen2.5-VL-7B-Instruct policy after Perceval-RL training | `<YOUR_HF_USER>/perceval-policy-7b` *(coming soon)* |
+| `perceval-prm-3b` | 3B PERCEVAL — perception-centric PRM | [HF](https://huggingface.co/RUC-AIBOX/Perceval-3B-reward) |
+| `perceval-policy-3b` | Qwen2.5-VL-3B-Instruct policy after Perceval-RL training | [HF](https://huggingface.co/RUC-AIBOX/Perceval-3B-policy) |
+
 
 The PRM's I/O contract is fully specified by `process_verify` / `extract_judgement_from_response` in [`verl/utils/reward_score/hallu_token_reward_vstar.py`](verl/utils/reward_score/hallu_token_reward_vstar.py). Any model that returns the same `<answer>[<sub-sentence>, ...]</answer>` format over an OpenAI-compatible endpoint can be substituted.
 
@@ -75,11 +74,7 @@ $EDITOR configs/perceval.env
 
 Required variables: `PERCEVAL_MODEL_PATH`, `PERCEVAL_TRAIN_DATA`, `PERCEVAL_VAL_DATA`, `PERCEVAL_RESULTS_DIR`, `PERCEVAL_LOG_DIR`, `LLM_AS_A_JUDGE_BASE`, `PRM_BASE`.
 
-## Data
 
-The trainer expects parquet files with `images`, `prompt`, `reward_model.ground_truth`, and `extra_info` columns. Schema and pointers to the public sources (V\*, DeepEyes, MathVista, ViRL, …) are in [`docs/DATA_PREPARATION.md`](docs/DATA_PREPARATION.md). The repo does **not** ship parquet files.
-
-**Note on data-source routing.** PERCEVAL only generates spans for rows whose `data_source` contains `vstar` (set in `adaptive_comput_score`). For non-perception rows (math, ViRL, etc.) the penalty mask is empty, so the `trm` advantage estimator mathematically degenerates to vanilla GRPO. This matches the *conditional strategy* described in §4.1 of the paper.
 
 ## End-to-end run
 
@@ -152,12 +147,4 @@ At k=16 samples, Truncate hits V\* = 89.53 / BLINK = 49.45 vs. majority voting's
 }
 ```
 
-## License
 
-Apache License 2.0. See [`LICENSE`](LICENSE). This work is derived from
-[verl](https://github.com/volcengine/verl) (Apache 2.0); [`NOTICE`](NOTICE)
-enumerates the Perceval-specific modifications.
-
-## Acknowledgments
-
-This work was partially supported by the National Natural Science Foundation of China No. 92470205 and Beijing Major Science and Technology Project No. Z251100008425002.
