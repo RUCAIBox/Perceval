@@ -1,137 +1,175 @@
-<div align="center">
+# Perceval: Perception-centric Process Reward Models for VLMs
 
-<h1>🔍 Perceval</h1>
+Official training code for **[Improving Vision-language Models with Perception-centric Process Reward Models](https://openaccess.thecvf.com/content/CVPR2026/papers/Min_Improving_Vision-language_Models_with_Perception-centric_Process_Reward_Models_CVPR_2026_paper.pdf)** *(CVPR 2026)*.
 
-<h3><b>Improving Vision-language Models with Perception-centric Process Reward Models</b></h3>
+Yingqian Min<sup>1,2 ∗</sup>, Kun Zhou<sup>3 ∗</sup>, Yifan Li<sup>1,2 ∗</sup>, Yuhuan Wu<sup>4</sup>, Han Peng<sup>1</sup>, Yifan Du<sup>1</sup>, Wayne Xin Zhao<sup>1 †</sup>, Min Yang<sup>2</sup>, Ji-Rong Wen<sup>1</sup>
 
-<p>
-  <a href="https://arxiv.org/abs/xxxx.xxxxx"><img src="https://img.shields.io/badge/arXiv-Paper-red?style=flat-square&logo=arxiv" alt="arXiv"></a>
-  <a href="https://github.com/RUCAIBox/Perceval"><img src="https://img.shields.io/badge/GitHub-Code-black?style=flat-square&logo=github" alt="Code"></a>
-  <img src="https://img.shields.io/badge/CVPR-2026-blue?style=flat-square" alt="CVPR 2026">
-  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
-</p>
+<sup>1</sup>Gaoling School of Artificial Intelligence, Renmin University of China &nbsp; <sup>2</sup>Bytedance &nbsp; <sup>3</sup>UC San Diego &nbsp; <sup>4</sup>HKUST<br>
+<sup>∗</sup>Equal contributions &nbsp; <sup>†</sup>Corresponding author
 
-<p>
-  <a href="#">Yingqian Min</a><sup>1,2*</sup>&nbsp;·&nbsp;
-  <a href="#">Kun Zhou</a><sup>3*</sup>&nbsp;·&nbsp;
-  <a href="#">Yifan Li</a><sup>1,2*</sup>&nbsp;·&nbsp;
-  <a href="#">Yuhuan Wu</a><sup>4</sup>&nbsp;·&nbsp;
-  <a href="#">Han Peng</a><sup>1</sup>&nbsp;·&nbsp;
-  <a href="#">Yifan Du</a><sup>1</sup><br>
-  <a href="#">Wayne Xin Zhao</a><sup>1†</sup>&nbsp;·&nbsp;
-  <a href="#">Min Yang</a><sup>2</sup>&nbsp;·&nbsp;
-  <a href="#">Ji-Rong Wen</a><sup>1</sup>
-</p>
-
-<p>
-  <sup>1</sup>Gaoling School of AI, Renmin University of China &nbsp;·&nbsp;
-  <sup>2</sup>Bytedance &nbsp;·&nbsp;
-  <sup>3</sup>UC San Diego &nbsp;·&nbsp;
-  <sup>4</sup>HKUST
-</p>
-
-<p><sup>*</sup>Equal contributions &nbsp;&nbsp;<sup>†</sup>Corresponding author</p>
-
-</div>
+Built on top of [volcengine/verl](https://github.com/volcengine/verl); see [`NOTICE`](NOTICE) for attribution.
 
 ---
 
-## 📖 TL;DR
+## TL;DR
 
-We propose **Perceval**, a **perception-centric Process Reward Model (PRM)** that tackles the sparse-reward bottleneck in RLVR for vision-language models. Perceval detects image–text misalignments at the token level, enabling fine-grained training supervision and test-time error correction.
+RLVR for VLMs gives each token the same outcome-level reward, so the policy never learns which specific perceptual claim went wrong. **PERCEVAL** is a perception-centric Process Reward Model (PRM) that reads the response, grounds each claim against the image, and returns the *exact substrings* that hallucinate. We then convert those substrings into a token-level mask and rescale the GRPO advantage on those tokens only, replacing GRPO's sequence-level signal with a fine-grained, perception-aware credit-assignment.
 
----
+```
+Â'_{i,t} = Â_i − α · m_{i,t} · |Â_i|     (Eq. 3 in the paper, α = 0.1)
+```
 
-## 🚀 News
+`m_{i,t} = 1` iff token *t* in response *i* falls inside a span PERCEVAL flagged as hallucinated. Correct tokens keep the original GRPO advantage; flagged tokens are downweighted (or pushed further negative when `Â_i < 0`).
 
-- **[2026.03]** 🎉 Paper accepted at **CVPR 2026**!
-- **[2026.03]** Code and models will be released soon. Stay tuned!
+## What this repository contains
 
----
+```
+perceval-open/
+├── verl/                                      # vendored verl + Perceval additions
+│   ├── trainer/ppo/core_algos.py              #   `trm` advantage estimator (Eq. 3)
+│   ├── trainer/ppo/ray_trainer.py             #   penalty-mask construction from PERCEVAL spans
+│   ├── workers/reward_manager/trm.py          #   threaded reward manager
+│   └── utils/reward_score/hallu_token_reward_vstar.py
+│                                              #   outcome (LLM-as-judge) + process (PERCEVAL) reward
+├── perceval/                                  # Perceval-specific Python package
+│   └── prompts/prompt_design.py               #   verifier prompt templates
+├── examples/perceval/
+│   ├── train/{3b,7b}_vstar_trm.sh             # policy RL training scripts
+│   ├── train/_common.sh                       # shared bootstrap (loads configs/perceval.env)
+│   └── serve/{serve_judge,serve_prm}.sh       # vLLM endpoints for the judge & PERCEVAL
+├── configs/perceval.env.example               # all user-tunable paths and URLs
+├── docs/DATA_PREPARATION.md                   # parquet schema + dataset sources
+├── tests/, recipe/, scripts/, docs/           # inherited from verl
+└── LICENSE, NOTICE
+```
 
-## 💡 Motivation
+The PRM training pipeline itself (query selection → rollout generation → automated annotation with a strong LLM → SFT on the structured `<answer>[…]</answer>` format) is described in §3.1 of the paper; this repo provides the RL training side. The released PRM weights below let you skip step 1-4 and go straight to training a policy.
 
-Existing RLVR methods for VLMs rely on **outcome-level (sequence-level) rewards**, which are too coarse to:
-- Identify *which step* in the reasoning chain went wrong
-- Distinguish perceptual errors from logical errors
-- Provide corrective gradients to specific hallucinated spans
+## Pretrained checkpoints
 
-This creates a **hard credit-assignment problem** that bottlenecks learning.
+| Checkpoint | Role | HuggingFace |
+| --- | --- | --- |
+| `perceval-prm-3b` | 3B PERCEVAL — perception-centric PRM | `<YOUR_HF_USER>/perceval-prm-3b` *(coming soon)* |
+| `perceval-prm-7b` | 7B PERCEVAL — perception-centric PRM | `<YOUR_HF_USER>/perceval-prm-7b` *(coming soon)* |
+| `perceval-policy-3b` | Qwen2.5-VL-3B-Instruct policy after Perceval-RL training | `<YOUR_HF_USER>/perceval-policy-3b` *(coming soon)* |
+| `perceval-policy-7b` | Qwen2.5-VL-7B-Instruct policy after Perceval-RL training | `<YOUR_HF_USER>/perceval-policy-7b` *(coming soon)* |
 
----
+The PRM's I/O contract is fully specified by `process_verify` / `extract_judgement_from_response` in [`verl/utils/reward_score/hallu_token_reward_vstar.py`](verl/utils/reward_score/hallu_token_reward_vstar.py). Any model that returns the same `<answer>[<sub-sentence>, ...]</answer>` format over an OpenAI-compatible endpoint can be substituted.
 
-## 🔧 Method Overview
+## Setup
 
-<div align="center">
-<img src="assets/main.png" width="85%" alt="Perceval Framework">
-<p><em>Overview of Process-Supervised GRPO with Perceval.</em></p>
-</div>
+```bash
+conda create -n perceval python=3.10 -y && conda activate perceval
+pip install -e .
+pip install vllm openai math_verify filelock pyarrow tzdata
+```
 
-Perceval operates in three stages:
+Copy and edit the example config:
 
-### 1. 🧠 Perception-Centric PRM Training
-- Trained on perception-intensive data (visual search, referring-expression grounding)
-- Uses a `<think>...</think>` → `<answer>...</answer>` schema to ground claims against visual evidence
-- Identifies **hallucinated spans** as Python lists of exact offending strings
+```bash
+cp configs/perceval.env.example configs/perceval.env
+$EDITOR configs/perceval.env
+```
 
-### 2. 🎯 Token-Level Advantage Reallocation (RLVR)
-We replace GRPO's sequence-level advantage $\hat{A}_i$ with a **token-level** variant:
+Required variables: `PERCEVAL_MODEL_PATH`, `PERCEVAL_TRAIN_DATA`, `PERCEVAL_VAL_DATA`, `PERCEVAL_RESULTS_DIR`, `PERCEVAL_LOG_DIR`, `LLM_AS_A_JUDGE_BASE`, `PRM_BASE`.
 
-$$\hat{A}'_{i,t} := \hat{A}_i - \alpha \cdot m_{i,t} \cdot |\hat{A}_i|$$
+## Data
 
-where $m_{i,t} = 1$ for tokens in hallucinated spans. This directly penalizes hallucinatory tokens while preserving signal for correct tokens.
+The trainer expects parquet files with `images`, `prompt`, `reward_model.ground_truth`, and `extra_info` columns. Schema and pointers to the public sources (V\*, DeepEyes, MathVista, ViRL, …) are in [`docs/DATA_PREPARATION.md`](docs/DATA_PREPARATION.md). The repo does **not** ship parquet files.
 
-### 3. 🔄 Test-Time Scaling via Truncation–Regeneration
-- **Truncate–then–Regenerate**: truncate at the first erroneous span, then resample
-- **Truncate–Thinking–then–Regenerate**: additionally inject a reflection prompt before regeneration
-- Both loops iterate up to $k$ times, consistently outperforming majority voting
+**Note on data-source routing.** PERCEVAL only generates spans for rows whose `data_source` contains `vstar` (set in `adaptive_comput_score`). For non-perception rows (math, ViRL, etc.) the penalty mask is empty, so the `trm` advantage estimator mathematically degenerates to vanilla GRPO. This matches the *conditional strategy* described in §4.1 of the paper.
 
----
+## End-to-end run
 
-## 📊 Main Results
+Open three terminals (or use `tmux`) on the same machine:
 
-### RL Training with PRM (vs. GRPO baseline)
+```bash
+# Terminal 1: LLM-as-judge on GPU 0, port 9999
+CUDA_VISIBLE_DEVICES=0 PORT=9999 \
+  PERCEVAL_JUDGE_MODEL_PATH=Qwen/Qwen2.5-VL-7B-Instruct \
+  bash examples/perceval/serve/serve_judge.sh
 
-| Model | V\* All | BLINK | MMStar | MathVision | ChartQA |
-|:------|:-------:|:-----:|:------:|:----------:|:-------:|
-| Qwen2.5-VL-3B + GRPO | 80.10 | 49.13 | 55.3 | 23.36 | 83.32 |
-| **+ Ours (3B)** | **83.25** | **48.75** | **55.8** | **26.32** | **86.48** |
-| Qwen2.5-VL-7B + GRPO | 84.29 | 53.55 | 62.0 | 27.96 | 85.16 |
-| **+ Ours (7B)** | **86.39** | **54.49** | **63.8** | **30.92** | **84.44** |
+# Terminal 2: PERCEVAL PRM on GPU 1, port 12298 (launch more replicas if you can)
+CUDA_VISIBLE_DEVICES=1 PORT=12298 \
+  PERCEVAL_PRM_MODEL_PATH=<YOUR_HF_USER>/perceval-prm-7b \
+  bash examples/perceval/serve/serve_prm.sh
 
-### Test-Time Scaling (3B, k=16)
+# Terminal 3: trainer on GPUs 2-5 (3B run); use 7b_vstar_trm.sh on 8 GPUs for the 7B run
+CUDA_VISIBLE_DEVICES=2,3,4,5 bash examples/perceval/train/3b_vstar_trm.sh
+```
 
-| Method | V\* All | BLINK |
-|:-------|:-------:|:-----:|
-| Major Voting | 85.86 | 48.41 |
-| Truncate | **89.53** | **49.45** |
-| Truncate-Thinking | 88.48 | 49.38 |
+See [`examples/perceval/serve/README.md`](examples/perceval/serve/README.md) for multi-replica / multi-node setups.
 
-> **Key finding**: Perceval's fine-grained perceptual supervision generalizes to math & chart reasoning tasks, even without PRM intervention during their RL training — a surprising capability transfer effect.
+## Key knobs
 
+| Hydra key | Default | What it does |
+| --- | --- | --- |
+| `algorithm.adv_estimator` | `trm` | The Perceval advantage estimator. Setting it to `grpo` etc. falls back to upstream verl. |
+| `+algorithm.penalty_percentage` | `0.1` | α in Eq. 3. The paper's ablation (Table 3) found `0.03` too weak, `0.3` over-penalizes, `0.1` optimal. |
+| `+reward_model.reward_kwargs.verify_process` | `True` | Whether to call PERCEVAL at all. Set to `False` to ablate. |
+| `+reward_model.reward_kwargs.max_workers` | `768` | Thread-pool size for parallel PERCEVAL/judge calls. |
+| `custom_reward_function.path` | `verl/utils/reward_score/hallu_token_reward_vstar.py` | The reward function used. |
 
----
+## Main results (Table 1 in the paper)
 
-## 🤗 Model Zoo
+Qwen2.5-VL-3B-Instruct policy:
 
-| Model | Size | Description | Download |
-|:------|:----:|:------------|:--------:|
-| Perceval-PRM | 3B | Perception-centric PRM | Coming soon |
-| Perceval-PRM | 7B | Perception-centric PRM | Coming soon |
-| Perceval-Policy | 3B | Policy model trained with PRM | Coming soon |
-| Perceval-Policy | 7B | Policy model trained with PRM | Coming soon |
+| Benchmark | + GRPO | + Ours | Δ |
+| --- | ---: | ---: | ---: |
+| V\* (attr) | 86.95 | **90.43** | **+3.48** |
+| V\* (pos) | 69.73 | **72.37** | +2.64 |
+| V\* (all) | 80.10 | **83.25** | +3.15 |
+| BLINK | 49.13 | 48.75 | -0.38 |
+| MMStar | 55.3 | **55.8** | +0.5 |
+| MME-RealWorld | 46.8 | **47.6** | +0.8 |
+| RealWorldQA | 62.1 | **64.9** | +2.8 |
+| MATH-Vision | 23.36 | **26.32** | **+2.96** |
+| MathVista | 65.1 | **65.6** | +0.5 |
+| ChartQA | 83.32 | **86.48** | **+3.16** |
 
----
+Qwen2.5-VL-7B-Instruct policy:
 
+| Benchmark | + GRPO | + Ours | Δ |
+| --- | ---: | ---: | ---: |
+| V\* (attr) | 85.22 | **86.09** | +0.87 |
+| V\* (pos) | 82.89 | **86.84** | **+3.95** |
+| V\* (all) | 84.29 | **86.39** | +2.10 |
+| BLINK | 53.55 | **54.49** | +0.94 |
+| MMStar | 62.0 | **63.8** | +1.8 |
+| MME-RealWorld | 49.5 | **50.0** | +0.5 |
+| RealWorldQA | 66.4 | **67.4** | +1.0 |
+| MATH-Vision | 27.96 | **30.92** | **+2.96** |
+| MathVista | 71.7 | **72.0** | +0.3 |
+| ChartQA | **85.16** | 84.44 | -0.72 |
 
+Notable: the largest gains are on V\*-positional (visual search), MATH-Vision, and ChartQA. The paper's reading is that strengthening perceptual grounding generalizes to downstream tasks that depend on it — even though PRM supervision only fires on the perception-tagged subset of the training data.
 
----
+## Test-time scaling
+
+PERCEVAL also drives two inference-time refinement loops (Table 2):
+
+- **Truncate–then–Regenerate**: truncate the response before the first flagged token and resample.
+- **Truncate–Thinking–then–Regenerate**: as above, but inject a short reflective prompt before resampling.
+
+At k=16 samples, Truncate hits V\* = 89.53 / BLINK = 49.45 vs. majority voting's 85.86 / 48.41.
+
+## Citation
+
+```bibtex
+@inproceedings{perceval2026,
+  title     = {Improving Vision-language Models with Perception-centric Process Reward Models},
+  author    = {Yingqian Min and Kun Zhou and Yifan Li and Yuhuan Wu and Han Peng and Yifan Du and Wayne Xin Zhao and Min Yang and Ji-Rong Wen},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2026}
+}
+```
+
+## License
+
+Apache License 2.0. See [`LICENSE`](LICENSE). This work is derived from
+[verl](https://github.com/volcengine/verl) (Apache 2.0); [`NOTICE`](NOTICE)
+enumerates the Perceval-specific modifications.
+
 ## Acknowledgments
 
-We thank the authors of [DeepEyes](https://github.com/Visual-Agent/DeepEyes), [SophiaVL-R1](https://github.com/kxfan2002/SophiaVL-R1), and [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL) for their open-source contributions.
-
----
-
-<div align="center">
-<sub>⭐ Star this repo if you find it helpful!</sub>
-</div>
+This work was partially supported by the National Natural Science Foundation of China No. 92470205 and Beijing Major Science and Technology Project No. Z251100008425002.

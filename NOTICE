@@ -1,0 +1,42 @@
+Perceval — Perception-centric Process Reward Models for VLMs
+=============================================================
+
+This repository builds on volcengine/verl (https://github.com/volcengine/verl),
+released by Bytedance Ltd. under the Apache License, Version 2.0. See LICENSE
+for the full text of the license.
+
+Original verl NOTICE:
+---------------------
+Copyright 2023-2024 Bytedance Ltd. and/or its affiliates
+
+Modifications made for Perceval
+-------------------------------
+The following components are new or substantially modified relative to the
+upstream verl release:
+
+  * verl/utils/reward_score/hallu_token_reward*.py
+        Perception-centric reward functions that combine an LLM-as-judge
+        outcome verifier with a PRM-based process verifier and a token-position
+        finder that maps PRM-flagged sub-sentences to response token spans.
+
+  * verl/workers/reward_manager/trm.py
+        Threaded reward manager with retry / fail-task-logging support.
+
+  * verl/workers/reward_manager/naive_record.py
+        Record-keeping variant of the naive reward manager.
+
+  * verl/trainer/ppo/core_algos.py
+        New advantage estimator `trm` implementing Eq. 3 of the paper:
+            Â'_{i,t} = Â_i − α · m_{i,t} · |Â_i|
+        where α (= `penalty_percentage`, default 0.1) is the penalty
+        strength and m_{i,t} is a token-level mask derived from the
+        sub-sentence spans returned by PERCEVAL. Selected via
+        `algorithm.adv_estimator=trm` with optional overrides on
+        `algorithm.penalty_percentage`.
+
+  * perceval/prompts/prompt_design.py
+        Verifier prompt templates used by the reward functions.
+
+  * examples/perceval/
+        End-to-end training and serving scripts driven by env vars instead of
+        hard-coded paths.
