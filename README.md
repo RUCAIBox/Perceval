@@ -15,6 +15,8 @@ Built on top of [volcengine/verl](https://github.com/volcengine/verl); see [`NOT
 
 RLVR for VLMs gives each token the same outcome-level reward, so the policy never learns which specific perceptual claim went wrong. **PERCEVAL** is a perception-centric Process Reward Model (PRM) that reads the response, grounds each claim against the image, and returns the *exact substrings* that hallucinate. We then convert those substrings into a token-level mask and rescale the GRPO advantage on those tokens only, replacing GRPO's sequence-level signal with a fine-grained, perception-aware credit-assignment.
 
+![Process-Supervised GRPO framework](assets/fig1_overview.png)
+
 ```
 Â'_{i,t} = Â_i − α · m_{i,t} · |Â_i|     (Eq. 3 in the paper, α = 0.1)
 ```
@@ -39,7 +41,7 @@ perceval-open/
 │   └── serve/{serve_judge,serve_prm}.sh       # vLLM endpoints for the judge & PERCEVAL
 ├── configs/perceval.env.example               # all user-tunable paths and URLs
 ├── docs/DATA_PREPARATION.md                   # parquet schema + dataset sources
-├── tests/, recipe/, scripts/, docs/           # inherited from verl
+├── tests/, recipe/, scripts/                  # inherited from verl
 └── LICENSE, NOTICE
 ```
 
@@ -110,39 +112,25 @@ See [`examples/perceval/serve/README.md`](examples/perceval/serve/README.md) for
 | `+reward_model.reward_kwargs.max_workers` | `768` | Thread-pool size for parallel PERCEVAL/judge calls. |
 | `custom_reward_function.path` | `verl/utils/reward_score/hallu_token_reward_vstar.py` | The reward function used. |
 
-## Main results (Table 1 in the paper)
+## Main results
 
-Qwen2.5-VL-3B-Instruct policy:
+![Main results across visual search, perception-intensive reasoning, and math/chart benchmarks](assets/table1_main_results.png)
 
-| Benchmark | + GRPO | + Ours | Δ |
-| --- | ---: | ---: | ---: |
-| V\* (attr) | 86.95 | **90.43** | **+3.48** |
-| V\* (pos) | 69.73 | **72.37** | +2.64 |
-| V\* (all) | 80.10 | **83.25** | +3.15 |
-| BLINK | 49.13 | 48.75 | -0.38 |
-| MMStar | 55.3 | **55.8** | +0.5 |
-| MME-RealWorld | 46.8 | **47.6** | +0.8 |
-| RealWorldQA | 62.1 | **64.9** | +2.8 |
-| MATH-Vision | 23.36 | **26.32** | **+2.96** |
-| MathVista | 65.1 | **65.6** | +0.5 |
-| ChartQA | 83.32 | **86.48** | **+3.16** |
+Notable: at the 3B scale, gains are largest on V\*-positional (visual search), MATH-Vision, and ChartQA. At 7B, V\*-positional jumps by ~4 points and MATH-Vision by ~3. The paper's reading is that strengthening perceptual grounding generalizes to downstream tasks that depend on it — even though PRM supervision only fires on the perception-tagged subset of the training data. The 7B policy is also competitive with DeepEyes and surpasses Pixel-Reasoner on visual search, despite not relying on external image-manipulation tools.
 
-Qwen2.5-VL-7B-Instruct policy:
+### No reward hacking
 
-| Benchmark | + GRPO | + Ours | Δ |
-| --- | ---: | ---: | ---: |
-| V\* (attr) | 85.22 | **86.09** | +0.87 |
-| V\* (pos) | 82.89 | **86.84** | **+3.95** |
-| V\* (all) | 84.29 | **86.39** | +2.10 |
-| BLINK | 53.55 | **54.49** | +0.94 |
-| MMStar | 62.0 | **63.8** | +1.8 |
-| MME-RealWorld | 49.5 | **50.0** | +0.5 |
-| RealWorldQA | 66.4 | **67.4** | +1.0 |
-| MATH-Vision | 27.96 | **30.92** | **+2.96** |
-| MathVista | 71.7 | **72.0** | +0.3 |
-| ChartQA | **85.16** | 84.44 | -0.72 |
+A common failure mode of reward-model-driven RL is the policy gaming the reward signal — the loss keeps going down without genuine quality gains. Because PERCEVAL doesn't emit a scalar reward but instead localizes spans, gaming it would require *hiding* hallucinations from a strong VLM verifier, which is much harder.
 
-Notable: the largest gains are on V\*-positional (visual search), MATH-Vision, and ChartQA. The paper's reading is that strengthening perceptual grounding generalizes to downstream tasks that depend on it — even though PRM supervision only fires on the perception-tagged subset of the training data.
+Empirically, the hallucination rate that PERCEVAL flags during training falls early on and then *plateaus* — exactly what you'd expect when the policy is genuinely improving but cannot fool the verifier indefinitely (Figure 2 in the paper):
+
+![Hallucination rate during training](assets/fig2_hallucination_rate.png)
+
+### Qualitative example
+
+A spatial-relation question where the GRPO baseline blurts an answer with no grounding while the Perceval-trained model first locates each vehicle then deduces their relative position (Figure 3 in the paper):
+
+![Qualitative comparison: GRPO vs Perceval-trained model](assets/fig3_case_study.png)
 
 ## Test-time scaling
 
